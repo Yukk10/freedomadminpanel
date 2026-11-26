@@ -107,6 +107,9 @@ public final class SpectateHud {
             float mult = self.getAbilities().getFlySpeed() / 0.05F;
             speed = (SpectateMode.justRestored() ? "↺ " : "") + "полёт ×" + String.format(Locale.ROOT, "%.1f", mult);
             speedColor = SpectateMode.justRestored() ? -12723068 : -7695450;
+        } else if (SpectateMode.switchingGamemode()) {
+            speed = "включаю GM 3…";
+            speedColor = -7695450;
         } else {
             speed = "вы не в GM 3";
             speedColor = -29630;

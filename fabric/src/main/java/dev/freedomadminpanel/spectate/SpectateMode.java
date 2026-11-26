@@ -21,6 +21,8 @@ import org.jetbrains.annotations.Nullable;
 
 public final class SpectateMode {
     private static final long TP_COOLDOWN_MS = 400L;
+    private static final long GM_RETRY_MS = 3000L;
+    private static final int GM_MAX_TRIES = 3;
     private static boolean active;
     private static final List<String> queue = new ArrayList<>();
     @Nullable
@@ -37,6 +39,9 @@ public final class SpectateMode {
     @Nullable
     private static Object lastWorld;
     public static boolean altSuppressed;
+    private static long gmSentAt;
+    private static int gmTries;
+    private static boolean gmWarned;
 
     private SpectateMode() {
     }
@@ -78,7 +83,11 @@ public final class SpectateMode {
                 lastPlayer = client.player;
                 lastWorld = client.world;
                 rememberSpeed(client);
+                gmSentAt = 0L;
+                gmTries = 0;
+                gmWarned = false;
                 say(client, "Режим слежки: " + queue.size() + " игр. · Alt — мышь, ← → — листать", Formatting.GREEN);
+                ensureSpectator(client);
                 if (!queue.isEmpty()) {
                     go(client, 0);
                 }
@@ -181,6 +190,7 @@ public final class SpectateMode {
                 }
 
                 if (active) {
+                    ensureSpectator(client);
                     trackSpeed(client);
                 }
             } else {
@@ -244,6 +254,42 @@ public final class SpectateMode {
     private static String server() {
         String s = FreedomAdminPanelConfig.get().spectateServer;
         return s != null && !s.isBlank() ? s : "Выживание";
+    }
+
+    /**
+     * Держит модератора в режиме наблюдателя, пока слежка включена: при старте и если сервер сбросил режим
+     * (смена мира, телепорт, перезаход) отправляет команду "gm3" из конфига. Без прав на неё — не спамит:
+     * не больше GM_MAX_TRIES попыток подряд, потом одно предупреждение.
+     */
+    private static void ensureSpectator(MinecraftClient client) {
+        ClientPlayerEntity p = client.player;
+        if (p == null || !FreedomAdminPanelConfig.get().spectateGamemode) {
+            return;
+        }
+
+        if (inSpectator(client, p)) {
+            gmTries = 0;
+            gmWarned = false;
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (now - gmSentAt < GM_RETRY_MS) {
+            return;
+        }
+
+        if (gmTries < GM_MAX_TRIES) {
+            gmSentAt = now;
+            gmTries++;
+            Commands.send(Commands.build("gm3", Map.of()));
+        } else if (!gmWarned) {
+            gmWarned = true;
+            say(client, "Не удалось включить GM 3 — проверьте права на /" + Commands.build("gm3", Map.of()), Formatting.RED);
+        }
+    }
+
+    public static boolean switchingGamemode() {
+        return active && gmTries > 0 && !gmWarned;
     }
 
     private static void rememberSpeed(MinecraftClient client) {

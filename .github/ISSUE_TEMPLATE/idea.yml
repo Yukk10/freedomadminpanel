@@ -1,0 +1,30 @@
+name: Идея
+description: Предложить новую функцию или улучшение
+title: "[Идея] "
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Что улучшить
+      options:
+        - Мод (панель, слежка, чат)
+        - Плагин на прокси (Velocity)
+        - Плагин на сервере (Paper)
+        - Другое
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что сейчас неудобно
+      description: Какую задачу хочется решить
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Как это могло бы работать
+      description: Опишите своими словами; можно приложить картинку или набросок
+    validations:
+      required: true

@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -14,6 +15,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 
 final class JailDatabase {
     private final Driver driver = new org.mariadb.jdbc.Driver();
+    private final ConnectionPool pool = new ConnectionPool(this::open);
     private final String address;
     private final String database;
     private final String username;
@@ -53,69 +55,62 @@ final class JailDatabase {
             + this.table
             + "` (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,uuid VARCHAR(36) NOT NULL,name VARCHAR(32) NOT NULL,jailed_by_uuid VARCHAR(36) NULL,jailed_by_name VARCHAR(32) NULL,reason VARCHAR(512) NULL,jail VARCHAR(64) NULL,cell INT NULL,server VARCHAR(32) NULL,time BIGINT NOT NULL,until BIGINT NOT NULL,released BIGINT NOT NULL DEFAULT 0,INDEX idx_uuid (uuid), INDEX idx_time (time)) DEFAULT CHARSET=utf8mb4";
 
-        try (
-            Connection c = this.open();
-            Statement st = c.createStatement();
-        ) {
-            st.executeUpdate(sql);
-        }
+        this.pool.use(c -> {
+            try (Statement st = c.createStatement()) {
+                return st.executeUpdate(sql);
+            }
+        });
     }
 
     void insert(JailDatabase.JailRecord r) throws SQLException {
         String sql = "INSERT INTO `"
             + this.table
             + "` (uuid, name, jailed_by_uuid, jailed_by_name, reason, jail, cell, server, time, until) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        this.pool.use(c -> {
+            try (PreparedStatement st = c.prepareStatement(sql)) {
+                st.setString(1, r.uuid().toString());
+                st.setString(2, r.name());
+                st.setString(3, r.jailedByUuid() == null ? null : r.jailedByUuid().toString());
+                st.setString(4, cut(r.jailedByName(), 32));
+                st.setString(5, cut(r.reason(), 512));
+                st.setString(6, cut(r.jail(), 64));
+                if (r.cell() == null) {
+                    st.setNull(7, Types.INTEGER);
+                } else {
+                    st.setInt(7, r.cell());
+                }
 
-        try (
-            Connection c = this.open();
-            PreparedStatement st = c.prepareStatement(sql);
-        ) {
-            st.setString(1, r.uuid().toString());
-            st.setString(2, r.name());
-            st.setString(3, r.jailedByUuid() == null ? null : r.jailedByUuid().toString());
-            st.setString(4, cut(r.jailedByName(), 32));
-            st.setString(5, cut(r.reason(), 512));
-            st.setString(6, cut(r.jail(), 64));
-            if (r.cell() == null) {
-                st.setNull(7, 4);
-            } else {
-                st.setInt(7, r.cell());
+                st.setString(8, cut(r.server(), 32));
+                st.setLong(9, r.time());
+                st.setLong(10, r.until());
+                return st.executeUpdate();
             }
-
-            st.setString(8, cut(r.server(), 32));
-            st.setLong(9, r.time());
-            st.setLong(10, r.until());
-            st.executeUpdate();
-        }
+        });
     }
 
     void release(UUID uuid, long time) throws SQLException {
         String sql = "UPDATE `" + this.table + "` SET released = ? WHERE uuid = ? AND released = 0 ORDER BY id DESC LIMIT 1";
-
-        try (
-            Connection c = this.open();
-            PreparedStatement st = c.prepareStatement(sql);
-        ) {
-            st.setLong(1, time);
-            st.setString(2, uuid.toString());
-            st.executeUpdate();
-        }
+        this.pool.use(c -> {
+            try (PreparedStatement st = c.prepareStatement(sql)) {
+                st.setLong(1, time);
+                st.setString(2, uuid.toString());
+                return st.executeUpdate();
+            }
+        });
     }
 
     int total(UUID uuid, String name) throws SQLException {
         String sql = "SELECT COUNT(*) FROM `" + this.table + "` WHERE uuid = ? OR name = ?";
+        return this.pool.use(c -> {
+            try (PreparedStatement st = c.prepareStatement(sql)) {
+                st.setString(1, uuid == null ? "" : uuid.toString());
+                st.setString(2, name);
 
-        try (
-            Connection c = this.open();
-            PreparedStatement st = c.prepareStatement(sql);
-        ) {
-            st.setString(1, uuid == null ? "" : uuid.toString());
-            st.setString(2, name);
-
-            try (ResultSet rs = st.executeQuery()) {
-                return rs.next() ? rs.getInt(1) : 0;
+                try (ResultSet rs = st.executeQuery()) {
+                    return rs.next() ? rs.getInt(1) : 0;
+                }
             }
-        }
+        });
     }
 
     List<JailDatabase.Entry> history(UUID uuid, String name, int limit, int offset) throws SQLException {
@@ -125,37 +120,39 @@ final class JailDatabase {
             + limit
             + " OFFSET "
             + offset;
-        List<JailDatabase.Entry> list = new ArrayList<>();
+        return this.pool.use(c -> {
+            try (PreparedStatement st = c.prepareStatement(sql)) {
+                st.setString(1, uuid == null ? "" : uuid.toString());
+                st.setString(2, name);
+                List<JailDatabase.Entry> list = new ArrayList<>();
 
-        try (
-            Connection c = this.open();
-            PreparedStatement st = c.prepareStatement(sql);
-        ) {
-            st.setString(1, uuid == null ? "" : uuid.toString());
-            st.setString(2, name);
-
-            try (ResultSet rs = st.executeQuery()) {
-                while (rs.next()) {
-                    int cell = rs.getInt("cell");
-                    Integer cellOrNull = rs.wasNull() ? null : cell;
-                    list.add(
-                        new JailDatabase.Entry(
-                            rs.getString("name"),
-                            rs.getString("jailed_by_name"),
-                            rs.getString("reason"),
-                            rs.getString("jail"),
-                            cellOrNull,
-                            rs.getString("server"),
-                            rs.getLong("time"),
-                            rs.getLong("until"),
-                            rs.getLong("released")
-                        )
-                    );
+                try (ResultSet rs = st.executeQuery()) {
+                    while (rs.next()) {
+                        int cell = rs.getInt("cell");
+                        Integer cellOrNull = rs.wasNull() ? null : cell;
+                        list.add(
+                            new JailDatabase.Entry(
+                                rs.getString("name"),
+                                rs.getString("jailed_by_name"),
+                                rs.getString("reason"),
+                                rs.getString("jail"),
+                                cellOrNull,
+                                rs.getString("server"),
+                                rs.getLong("time"),
+                                rs.getLong("until"),
+                                rs.getLong("released")
+                            )
+                        );
+                    }
                 }
-            }
-        }
 
-        return list;
+                return list;
+            }
+        });
+    }
+
+    void close() {
+        this.pool.close();
     }
 
     private static String cut(String s, int max) {

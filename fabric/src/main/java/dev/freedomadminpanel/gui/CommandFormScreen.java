@@ -14,13 +14,15 @@ import java.util.regex.Pattern;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
+import net.minecraft.client.gui.widget.PressableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.input.KeyInput;
 import net.minecraft.text.Text;
 import org.jetbrains.annotations.Nullable;
 
 public class CommandFormScreen extends BaseMenuScreen {
-    private static final Pattern TIME = Pattern.compile("^(\\d+[a-zA-Z]{1,3})+$");
+    private static final Pattern TIME = Pattern.compile("^(\\d{1,6}(mo|[smhdwy]))+$", Pattern.CASE_INSENSITIVE);
+    private static final int MAX_COMMAND = 256;
     private static final int FIELD_H = 18;
     private static final int CHIP_H = 14;
     private static final int LABEL_H = 12;
@@ -403,7 +405,12 @@ public class CommandFormScreen extends BaseMenuScreen {
     }
 
     private boolean isValid() {
-        return this.timeValid() && !this.textValue.isBlank();
+        return this.timeValid() && !this.textValue.isBlank() && !this.tooLong();
+    }
+
+    /** Команда (с флагом тихого режима, если он есть) не влезает в лимит Commands.send. */
+    private boolean tooLong() {
+        return this.buildCommand(this.type.silentText != null).length() > MAX_COMMAND;
     }
 
     private void updateState() {
@@ -454,11 +461,11 @@ public class CommandFormScreen extends BaseMenuScreen {
     @Override
     public boolean keyPressed(KeyInput input) {
         int key = input.key();
-        if (key != 257 && key != 335) {
-            return super.keyPressed(input);
-        } else {
+        if ((key == 257 || key == 335) && !(this.getFocused() instanceof PressableWidget)) {
             this.execute(false);
             return true;
+        } else {
+            return super.keyPressed(input);
         }
     }
 
@@ -472,7 +479,7 @@ public class CommandFormScreen extends BaseMenuScreen {
             int hintColor = -7695450;
             String hint;
             if (!this.timeValue.isBlank() && !this.timeValid()) {
-                hint = "неверный формат (1s, 5m, 2h, 7d)";
+                hint = "неверный формат (5m, 2h, 7d, 1mo)";
                 hintColor = -45730;
             } else if (this.type.time == ActionType.TimeMode.OPTIONAL && this.timeValue.isBlank()) {
                 hint = "навсегда (перманентно)";
@@ -489,8 +496,9 @@ public class CommandFormScreen extends BaseMenuScreen {
         }
 
         ctx.drawText(this.textRenderer, this.type.textLabel, x, this.textLabelY, -1512204, false);
-        String counter = this.textValue.length() + "/240";
-        ctx.drawText(this.textRenderer, counter, this.px + this.pw - 12 - this.textRenderer.getWidth(counter), this.textLabelY, -10854288, false);
+        boolean tooLong = this.tooLong();
+        String counter = tooLong ? "команда длиннее " + MAX_COMMAND + " — сократите" : this.textValue.length() + "/240";
+        ctx.drawText(this.textRenderer, counter, this.px + this.pw - 12 - this.textRenderer.getWidth(counter), this.textLabelY, tooLong ? -45730 : -10854288, false);
         Theme.roundRect(ctx, x, this.previewY, this.pw - 24, 20, -15723750);
         ctx.fill(x, this.previewY + 2, x + 2, this.previewY + 18, this.type.color);
         boolean silentHovered = this.silentButton != null && this.silentButton.isHovered();

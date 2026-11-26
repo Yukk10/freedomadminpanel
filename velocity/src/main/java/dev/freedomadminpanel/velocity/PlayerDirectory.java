@@ -19,6 +19,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -28,6 +30,8 @@ final class PlayerDirectory {
     private final Logger logger;
     private final PluginConfig config;
     private final Path file;
+    private final Executor background;
+    private final AtomicBoolean refreshing = new AtomicBoolean();
     private final Map<String, PlayerDirectory.Known> own = new ConcurrentHashMap<>();
     private volatile boolean dirty;
     @Nullable
@@ -39,8 +43,9 @@ final class PlayerDirectory {
     private volatile boolean liteBansFailed;
     private volatile String lastError = "";
 
-    PlayerDirectory(ProxyServer proxy, Logger logger, PluginConfig config, Path dataDir) {
+    PlayerDirectory(ProxyServer proxy, Logger logger, PluginConfig config, Path dataDir, Executor background) {
         this.proxy = proxy;
+        this.background = background;
         this.logger = logger;
         this.config = config;
         this.file = dataDir.resolve("players.json");
@@ -163,8 +168,41 @@ final class PlayerDirectory {
         this.cachedAt = 0L;
     }
 
+    void close() {
+        if (this.source != null) {
+            this.source.close();
+        }
+    }
+
+    /**
+     * Первый раз читает LiteBans сразу, дальше — в фоне: запрос списка не ждёт тяжёлый GROUP BY по истории,
+     * а отдаёт последние прочитанные данные.
+     */
+    private void refreshIfStale() {
+        if (this.source == null) {
+            return;
+        }
+
+        if (this.cachedAt == 0L) {
+            this.refreshLiteBans();
+        } else if (System.currentTimeMillis() - this.cachedAt >= this.config.cacheSeconds * 1000L && this.refreshing.compareAndSet(false, true)) {
+            try {
+                this.background.execute(() -> {
+                    try {
+                        this.refreshLiteBans();
+                    } finally {
+                        this.refreshing.set(false);
+                    }
+                });
+            } catch (RuntimeException e) {
+                this.refreshing.set(false);
+                throw e;
+            }
+        }
+    }
+
     List<PlayerDirectory.Row> snapshot() {
-        this.refreshLiteBans();
+        this.refreshIfStale();
         long now = System.currentTimeMillis();
         Map<String, PlayerDirectory.Known> merged = new HashMap<>();
 

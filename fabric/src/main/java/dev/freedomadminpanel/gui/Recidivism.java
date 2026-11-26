@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 import org.jetbrains.annotations.Nullable;
 
 public final class Recidivism {
-    private static final Pattern PART = Pattern.compile("(\\d+)\\s*(s|m|h|d|w)", 2);
+    private static final Pattern PART = Pattern.compile("(\\d+)\\s*(mo|s|m|h|d|w|y)", Pattern.CASE_INSENSITIVE);
     private static final long MIN = 60000L;
     private static final long HOUR = 3600000L;
     private static final long DAY = 86400000L;
@@ -83,15 +83,22 @@ public final class Recidivism {
                         return -1L;
                     }
 
-                    long n = Long.parseLong(m.group(1));
-
-                    total += n * switch (Character.toLowerCase(m.group(2).charAt(0))) {
-                        case 'd' -> 86400000L;
-                        case 'h' -> 3600000L;
-                        case 'm' -> 60000L;
-                        case 's' -> 1000L;
-                        default -> 604800000L;
+                    String unit = m.group(2).toLowerCase(Locale.ROOT);
+                    long unitMs = switch (unit) {
+                        case "y" -> 365L * 86400000L;
+                        case "mo" -> 30L * 86400000L;
+                        case "w" -> 604800000L;
+                        case "d" -> 86400000L;
+                        case "h" -> 3600000L;
+                        case "m" -> 60000L;
+                        default -> 1000L;
                     };
+
+                    try {
+                        total = Math.addExact(total, Math.multiplyExact(Long.parseLong(m.group(1)), unitMs));
+                    } catch (ArithmeticException | NumberFormatException e) {
+                        return -1L;
+                    }
                 }
 
                 return end == t.length() && total > 0L ? total : -1L;

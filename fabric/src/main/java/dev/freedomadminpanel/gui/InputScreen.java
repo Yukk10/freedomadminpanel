@@ -1,11 +1,13 @@
 package dev.freedomadminpanel.gui;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.PressableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.input.KeyInput;
 import net.minecraft.text.Text;
@@ -33,6 +35,10 @@ public class InputScreen extends BaseMenuScreen {
     private int labelY;
     private int previewY = -1;
     private int chipsY = -1;
+    private int chipsX;
+    private int chipsTop;
+    private int chipsW;
+    private final List<FlatButton> chipButtons = new ArrayList<>();
 
     public InputScreen(
         @Nullable Screen parent,
@@ -71,8 +77,6 @@ public class InputScreen extends BaseMenuScreen {
     @Override
     protected void init() {
         int wanted = 300;
-        int innerW = Math.min(wanted, this.width - 16) - 24;
-        List<String> chips = this.suggestions == null ? List.of() : this.suggestions.apply(this.value.trim());
         int chipsH = this.suggestions == null ? 0 : 36;
         int h = 88 + chipsH + (this.preview != null ? 26 : 0) + 20 + 12;
         this.layoutPanel(wanted, h);
@@ -86,38 +90,23 @@ public class InputScreen extends BaseMenuScreen {
         this.field.setText(this.value);
         this.field.setPlaceholder(Text.literal(this.placeholder).withColor(-10854288));
         this.field.setChangedListener(s -> {
-            boolean refreshChips = this.suggestions != null;
-            this.value = s;
-            if (refreshChips) {
-                this.clearAndInit();
-            } else {
-                this.updateState();
+            // слушатель вызывается и при движении курсора — пересобираем подсказки только при смене текста
+            if (s.equals(this.value)) {
+                return;
             }
+
+            this.value = s;
+            this.buildChips();
+            this.updateState();
         });
         this.addDrawableChild(this.field);
         this.setInitialFocus(this.field);
         y += 24;
-        this.chipsY = chips.isEmpty() ? y : -1;
-        int cx = x;
-        int cy = y;
-
-        for (String chip : chips) {
-            int cw = Math.min(w, this.textRenderer.getWidth(chip) + 10);
-            if (cx > x && cx + cw > x + w) {
-                cx = x;
-                cy += 17;
-                if (cy >= y + 34) {
-                    break;
-                }
-            }
-
-            this.addDrawableChild(new FlatButton(cx, cy, cw, 14, Text.literal(chip), this.color, b -> {
-                this.value = chip;
-                this.clearAndInit();
-            }));
-            cx += cw + 3;
-        }
-
+        this.chipsX = x;
+        this.chipsTop = y;
+        this.chipsW = w;
+        this.chipButtons.clear();
+        this.buildChips();
         y += chipsH;
         if (this.preview != null) {
             this.previewY = y;
@@ -130,6 +119,46 @@ public class InputScreen extends BaseMenuScreen {
             new FlatButton(x + half + 6, y, w - half - 6, 20, Text.literal("✔ " + this.submitText), this.color, b -> this.submit())
         );
         this.updateState();
+    }
+
+    /**
+     * Подсказки пересобираются на месте, без clearAndInit: тот сбрасывал курсор в конец поля, а после стрелок
+     * (клавиатурная навигация) ещё и уводил фокус на первую кнопку.
+     */
+    private void buildChips() {
+        for (FlatButton b : this.chipButtons) {
+            this.remove(b);
+        }
+
+        this.chipButtons.clear();
+        if (this.suggestions == null) {
+            this.chipsY = -1;
+            return;
+        }
+
+        List<String> chips = this.suggestions.apply(this.value.trim());
+        this.chipsY = chips.isEmpty() ? this.chipsTop : -1;
+        int x = this.chipsX;
+        int w = this.chipsW;
+        int cx = x;
+        int cy = this.chipsTop;
+
+        for (String chip : chips) {
+            int cw = Math.min(w, this.textRenderer.getWidth(chip) + 10);
+            if (cx > x && cx + cw > x + w) {
+                cx = x;
+                cy += 17;
+                if (cy >= this.chipsTop + 34) {
+                    break;
+                }
+            }
+
+            this.chipButtons.add(this.addDrawableChild(new FlatButton(cx, cy, cw, 14, Text.literal(chip), this.color, b -> {
+                this.field.setText(chip);
+                this.setFocused(this.field);
+            })));
+            cx += cw + 3;
+        }
     }
 
     private boolean isValid() {
@@ -151,11 +180,11 @@ public class InputScreen extends BaseMenuScreen {
     @Override
     public boolean keyPressed(KeyInput input) {
         int key = input.key();
-        if (key != 257 && key != 335) {
-            return super.keyPressed(input);
-        } else {
+        if ((key == 257 || key == 335) && !(this.getFocused() instanceof PressableWidget)) {
             this.submit();
             return true;
+        } else {
+            return super.keyPressed(input);
         }
     }
 

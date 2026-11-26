@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 
 final class RecordService {
     private static final long TTL = 15000L;
+    private static final int MAX_CACHED = 2000;
     private final Logger logger;
     private final Map<String, RecordService.Cached> cache = new ConcurrentHashMap<>();
     private volatile boolean jailWarned;
@@ -31,7 +32,7 @@ final class RecordService {
             String key = name.toLowerCase(Locale.ROOT);
             long now = System.currentTimeMillis();
             RecordService.Cached cached = this.cache.get(key);
-            if (cached != null && now - cached.at() < 15000L) {
+            if (cached != null && now - cached.at() < TTL) {
                 return cached.record();
             } else {
                 UUID uuid = uuidOf(directory, name);
@@ -61,6 +62,13 @@ final class RecordService {
                 }
 
                 RecordService.Record record = new RecordService.Record(counts, jails, tracked, activeWarns);
+                if (this.cache.size() >= MAX_CACHED) {
+                    this.cache.values().removeIf(c -> now - c.at() >= TTL);
+                    if (this.cache.size() >= MAX_CACHED) {
+                        this.cache.clear();
+                    }
+                }
+
                 this.cache.put(key, new RecordService.Cached(record, now));
                 return record;
             }

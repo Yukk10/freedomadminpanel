@@ -1,0 +1,62 @@
+name: Баг
+description: Что-то работает не так, как должно
+title: "[Баг] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что сообщаете о проблеме! Чем подробнее опишете — тем быстрее починим.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Где проблема
+      options:
+        - Мод (панель, слежка, чат)
+        - Плагин на прокси (Velocity)
+        - Плагин на сервере (Paper, история тюрьмы)
+        - Не знаю
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Версия мода
+      description: Видна в имени файла в папке mods, например freedomadminpanel-fabric-1.1.0.jar
+      placeholder: "1.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Что делали
+      description: По шагам — что нажимали, какую команду или экран открывали
+      placeholder: |
+        1. Открыл панель (])
+        2. Выбрал игрока → Наказания → Мут
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидали
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Что произошло на самом деле
+      description: Если игра вылетела — приложите crash-report из папки crash-reports или кусок logs/latest.log
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Скриншоты или видео
+      description: Можно перетащить файлы прямо сюда
+  - type: textarea
+    id: extra
+    attributes:
+      label: Дополнительно
+      description: Другие моды, сервер, на котором случилось, как часто повторяется

@@ -53,6 +53,7 @@ public final class FreedomAdminPanelVelocity {
     private final Logger logger;
     private final Path dataDir;
     private final Map<UUID, Long> lastListRequest = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> pendingList = new ConcurrentHashMap<>();
     private volatile PluginConfig config;
     private volatile PlayerDirectory directory;
     private SkinService skins;
@@ -69,7 +70,7 @@ public final class FreedomAdminPanelVelocity {
     @Subscribe
     public void onInit(ProxyInitializeEvent event) {
         this.config = PluginConfig.load(this.dataDir, this.logger);
-        this.directory = new PlayerDirectory(this.proxy, this.logger, this.config, this.dataDir);
+        this.directory = new PlayerDirectory(this.proxy, this.logger, this.config, this.dataDir, this::runAsync);
         this.skins = new SkinService(this.proxy, this.logger);
         this.proxy.getChannelRegistrar().register(new ChannelIdentifier[]{CHANNEL});
         this.proxy.getScheduler().buildTask(this, () -> this.directory.saveIfDirty()).repeat(1L, TimeUnit.MINUTES).schedule();
@@ -91,7 +92,12 @@ public final class FreedomAdminPanelVelocity {
     public void onShutdown(ProxyShutdownEvent event) {
         if (this.directory != null) {
             this.directory.save();
+            this.directory.close();
         }
+    }
+
+    private void runAsync(Runnable task) {
+        this.proxy.getScheduler().buildTask(this, task).schedule();
     }
 
     @Subscribe
@@ -103,6 +109,7 @@ public final class FreedomAdminPanelVelocity {
     public void onDisconnect(DisconnectEvent event) {
         this.directory.seen(event.getPlayer());
         this.lastListRequest.remove(event.getPlayer().getUniqueId());
+        this.pendingList.remove(event.getPlayer().getUniqueId());
     }
 
     @Subscribe
@@ -134,16 +141,24 @@ public final class FreedomAdminPanelVelocity {
                             player.sendPluginMessage(CHANNEL, Protocol.encodeDenied("Версия мода не совпадает с плагином — обновите мод"));
                             return;
                         } else {
-                            long now = System.currentTimeMillis();
-                            Long last = this.lastListRequest.put(player.getUniqueId(), now);
-                            if (last != null && now - last < 1000L) {
+                            UUID uuid = player.getUniqueId();
+                            Long last = this.lastListRequest.get(uuid);
+                            long wait = last == null ? 0L : LIST_COOLDOWN_MS - (System.currentTimeMillis() - last);
+                            if (wait > 0L) {
+                                // Чаще раза в секунду не отвечаем, но и не теряем запрос: ответим, когда пройдёт секунда
+                                if (this.pendingList.put(uuid, requestId) == null) {
+                                    this.proxy.getScheduler().buildTask(this, () -> {
+                                        Integer id = this.pendingList.remove(uuid);
+                                        if (id != null && player.isActive()) {
+                                            this.sendList(player, id);
+                                        }
+                                    }).delay(wait, TimeUnit.MILLISECONDS).schedule();
+                                }
+
                                 return;
                             }
 
-                            for (byte[] chunk : Protocol.encodeList(requestId, this.directory.snapshot())) {
-                                player.sendPluginMessage(CHANNEL, chunk);
-                            }
-
+                            this.sendList(player, requestId);
                             return;
                         }
                     case 2:
@@ -177,6 +192,18 @@ public final class FreedomAdminPanelVelocity {
             }
         } catch (Exception e) {
             this.logger.warn("Ошибка обработки запроса от {}", player.getUsername(), e);
+        }
+    }
+
+    private void sendList(Player player, int requestId) {
+        this.lastListRequest.put(player.getUniqueId(), System.currentTimeMillis());
+
+        try {
+            for (byte[] chunk : Protocol.encodeList(requestId, this.directory.snapshot())) {
+                player.sendPluginMessage(CHANNEL, chunk);
+            }
+        } catch (Exception e) {
+            this.logger.warn("Не удалось отправить список игроков {}", player.getUsername(), e);
         }
     }
 
@@ -226,13 +253,16 @@ public final class FreedomAdminPanelVelocity {
             } else if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
                 FreedomAdminPanelVelocity.this.config = PluginConfig.load(FreedomAdminPanelVelocity.this.dataDir, FreedomAdminPanelVelocity.this.logger);
                 FreedomAdminPanelVelocity.this.directory.save();
+                PlayerDirectory old = FreedomAdminPanelVelocity.this.directory;
                 PlayerDirectory dir = new PlayerDirectory(
                     FreedomAdminPanelVelocity.this.proxy,
                     FreedomAdminPanelVelocity.this.logger,
                     FreedomAdminPanelVelocity.this.config,
-                    FreedomAdminPanelVelocity.this.dataDir
+                    FreedomAdminPanelVelocity.this.dataDir,
+                    FreedomAdminPanelVelocity.this::runAsync
                 );
                 FreedomAdminPanelVelocity.this.directory = dir;
+                old.close();
                 FreedomAdminPanelVelocity.this.records.clear();
                 invocation.source().sendMessage(Component.text("freedomadminpanel: конфиг перезагружен, проверяю LiteBans...", NamedTextColor.GREEN));
                 FreedomAdminPanelVelocity.this.proxy

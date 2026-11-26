@@ -19,6 +19,10 @@ abstract class BanSource {
 
     abstract String describe();
 
+    /** Освободить соединения (перезагрузка конфига, выключение прокси). */
+    void close() {
+    }
+
     List<PlayerDirectory.Known> history() throws SQLException {
         String sql = "SELECT uuid, name, MAX(date) AS last_seen FROM {history} GROUP BY uuid, name";
         return this.query(sql, st -> {

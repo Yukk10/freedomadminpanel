@@ -1,5 +1,6 @@
 package dev.freedomadminpanel;
 
+import dev.freedomadminpanel.chat.ChatSelection;
 import dev.freedomadminpanel.config.FreedomAdminPanelConfig;
 import dev.freedomadminpanel.gui.ModPanelScreen;
 import dev.freedomadminpanel.gui.PlayerListScreen;
@@ -43,6 +44,7 @@ public class FreedomAdminPanelClient implements ClientModInitializer {
         spectatePrevKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.freedomadminpanel.spectate_prev", Type.KEYSYM, 263, CATEGORY));
         spectateMouseKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.freedomadminpanel.spectate_mouse", Type.KEYSYM, 342, CATEGORY));
         SpectateHud.register();
+        ChatSelection.register();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             boolean canOpen = client.player != null && client.getNetworkHandler() != null && client.currentScreen == null;
 

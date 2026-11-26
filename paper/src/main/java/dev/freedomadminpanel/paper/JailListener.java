@@ -47,7 +47,7 @@ final class JailListener implements Listener {
                                 time,
                                 untilOf(user.getJailedUntil(), time)
                             );
-                            this.plugin.async(() -> this.plugin.db().insert(record));
+                            this.plugin.write(() -> this.plugin.db().insert(record));
                         }
                     },
                     2L
@@ -63,7 +63,9 @@ final class JailListener implements Listener {
         if (user != null) {
             UUID uuid = user.getUniqueId();
             long time = System.currentTimeMillis();
-            this.plugin.async(() -> this.plugin.db().release(uuid, time));
+            // Посадка пишется через 2 тика (ждём, пока CMI заполнит данные) — выход ставим в ту же очередь позже,
+            // иначе при быстром освобождении UPDATE выполнится раньше INSERT и запись навсегда останется «сидит»
+            Bukkit.getScheduler().runTaskLater(this.plugin, () -> this.plugin.write(() -> this.plugin.db().release(uuid, time)), 3L);
         }
     }
 

@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 
 final class SkinService {
     private static final long TTL = 600000L;
+    private static final int MAX_CACHED = 5000;
     private final ProxyServer proxy;
     private final Logger logger;
     @Nullable
@@ -44,7 +45,7 @@ final class SkinService {
         String key = name.toLowerCase(Locale.ROOT);
         long now = System.currentTimeMillis();
         SkinService.Cached cached = this.cache.get(key);
-        if (cached != null && now - cached.at() < 600000L) {
+        if (cached != null && now - cached.at() < TTL) {
             return cached.skin();
         } else {
             SkinService.Skin skin = null;
@@ -60,6 +61,13 @@ final class SkinService {
                     skin = this.skinsRestorer.lookup(uuid, name);
                 } catch (Throwable e) {
                     this.logger.debug("SkinsRestorer: не удалось получить скин {}", name, e);
+                }
+            }
+
+            if (this.cache.size() >= MAX_CACHED) {
+                this.cache.values().removeIf(c -> now - c.at() >= TTL);
+                if (this.cache.size() >= MAX_CACHED) {
+                    this.cache.clear();
                 }
             }
 

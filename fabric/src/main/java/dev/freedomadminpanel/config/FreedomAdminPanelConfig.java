@@ -37,6 +37,7 @@ public class FreedomAdminPanelConfig {
     public String silentFlag = "-s";
     public String role = null;
     public String spectateServer = "Выживание";
+    public boolean spectateGamemode = true;
 
     private static Map<String, String> defaultCommands() {
         Map<String, String> m = new LinkedHashMap<>();

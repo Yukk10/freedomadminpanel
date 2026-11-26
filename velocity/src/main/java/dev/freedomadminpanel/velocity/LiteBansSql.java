@@ -13,6 +13,7 @@ final class LiteBansSql extends BanSource {
     private final PluginConfig.Database cfg;
     private final String prefix;
     private final Driver driver = new org.mariadb.jdbc.Driver();
+    private final ConnectionPool pool = new ConnectionPool(this::open);
 
     LiteBansSql(PluginConfig.Database cfg) {
         this.cfg = cfg;
@@ -46,11 +47,15 @@ final class LiteBansSql extends BanSource {
         Matcher m = TABLE.matcher(sql);
         String resolved = m.replaceAll(r -> this.prefix + r.group(1));
 
-        try (
-            Connection c = this.open();
-            PreparedStatement st = c.prepareStatement(resolved);
-        ) {
-            return (T)body.apply(st);
-        }
+        return this.pool.use(c -> {
+            try (PreparedStatement st = c.prepareStatement(resolved)) {
+                return body.apply(st);
+            }
+        });
+    }
+
+    @Override
+    void close() {
+        this.pool.close();
     }
 }

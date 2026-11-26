@@ -4,6 +4,7 @@
   "package": "dev.freedomadminpanel.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "ChatHudAccessor",
     "ClientPlayNetworkHandlerMixin"
   ],
   "injectors": {

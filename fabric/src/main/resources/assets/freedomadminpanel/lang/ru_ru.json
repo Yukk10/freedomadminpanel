@@ -1,0 +1,9 @@
+{
+  "key.freedomadminpanel.open": "Открыть панель модерации",
+  "key.freedomadminpanel.players": "Открыть список игроков",
+  "key.category.freedomadminpanel.main": "freedomadminpanel",
+  "key.freedomadminpanel.spectate": "Режим слежки: вкл / выкл",
+  "key.freedomadminpanel.spectate_next": "Слежка: следующий игрок",
+  "key.freedomadminpanel.spectate_prev": "Слежка: предыдущий игрок",
+  "key.freedomadminpanel.spectate_mouse": "Слежка: свободная мышь (удерживать)"
+}

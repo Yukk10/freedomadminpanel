@@ -1,0 +1,88 @@
+name: Release
+
+# Новый релиз создаётся автоматически, когда в main меняется release_version
+# в gradle.properties (тег v<release_version>). В релиз всегда кладутся все три jar.
+on:
+  push:
+    branches: [main]
+    paths: [gradle.properties]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read versions
+        id: v
+        run: |
+          prop() { grep -E "^$1=" "${2:-gradle.properties}" | cut -d= -f2- | tr -d '[:space:]'; }
+          echo "release=$(prop release_version)" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$(prop release_version)" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip (release already exists)
+        if: steps.v.outputs.exists == 'true'
+        run: echo "Тег v${{ steps.v.outputs.release }} уже есть — подними release_version, чтобы выпустить новый релиз."
+
+      - uses: actions/setup-java@v4
+        if: steps.v.outputs.exists == 'false'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.v.outputs.exists == 'false'
+
+      - name: Build all jars
+        if: steps.v.outputs.exists == 'false'
+        run: ./gradlew buildAll --no-daemon
+
+      - name: Release notes
+        if: steps.v.outputs.exists == 'false'
+        run: |
+          prop() { grep -E "^$1=" "$2" | cut -d= -f2- | tr -d '[:space:]'; }
+          prev=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          [ -n "$prev" ] && git show "$prev:gradle.properties" > prev.properties || : > prev.properties
+          {
+            echo "## Состав релиза"
+            echo
+            echo "| Часть | Версия | |"
+            echo "|---|---|---|"
+            for m in fabric velocity paper; do
+              new=$(prop "${m}_version" gradle.properties)
+              old=$(prop "${m}_version" prev.properties)
+              case "$m" in fabric) title="Мод (Fabric, клиент)";; velocity) title="Плагин Velocity (прокси)";; paper) title="Плагин Paper (сервера с CMI)";; esac
+              if [ -z "$old" ]; then mark="новое"; elif [ "$old" != "$new" ]; then mark="**обновлено** ($old → $new)"; else mark="без изменений"; fi
+              echo "| $title | \`freedomadminpanel-$m-$new.jar\` | $mark |"
+            done
+            echo
+            echo "Протокол мод ↔ Velocity: v$(prop protocol_version gradle.properties)"
+            if [ -n "$prev" ]; then
+              echo
+              echo "## Изменения с $prev"
+              echo
+              git log --no-merges --pretty='- %s' "$prev..HEAD"
+            fi
+          } > notes.md
+          cat notes.md
+
+      - name: Publish release
+        if: steps.v.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v${{ steps.v.outputs.release }}"
+          gh release create "$tag" build/release/*.jar \
+            --target "$GITHUB_SHA" \
+            --title "freedomadminpanel $tag" \
+            --notes-file notes.md

@@ -1,0 +1,12 @@
+name: freedomadminpanel
+version: '${version}'
+main: dev.freedomadminpanel.paper.FreedomAdminPanelPaper
+api-version: '1.21'
+author: yukio
+description: Записывает историю тюрьмы CMI для мода и плагина freedomadminpanel
+softdepend: [CMI]
+commands:
+  jailhistory:
+    description: История тюрьмы игрока
+    usage: /jailhistory <ник> [страница]
+    aliases: [jhistory]

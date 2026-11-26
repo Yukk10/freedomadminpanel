@@ -1,0 +1,18 @@
+# freedomadminpanel — запись истории тюрьмы CMI.
+# Каждая посадка в тюрьму (и выход из неё) записывается в базу MySQL,
+# откуда её читает плагин freedomadminpanel на Velocity (рецидив в моде). Команда /jailhistory — в этом плагине.
+
+# Как называть этот сервер в истории тюрьмы
+server: "Выживание"
+
+# База данных — та же, что у LiteBans (plugins/LiteBans/config.yml, раздел sql).
+# Пользователю нужны права на создание таблицы и запись в неё (подойдёт пользователь LiteBans).
+database:
+  address: "localhost:3306"
+  database: "litebans"
+  username: "litebans"
+  password: ""
+  options: "allowPublicKeyRetrieval=true"
+
+# Таблица истории тюрьмы (создаётся автоматически). Должна совпадать с "jailTable" в плагине на Velocity.
+table: "freedomadminpanel_jails"

@@ -1,0 +1,9 @@
+{
+  "key.freedomadminpanel.open": "Open moderation panel",
+  "key.freedomadminpanel.players": "Open player list",
+  "key.category.freedomadminpanel.main": "freedomadminpanel",
+  "key.freedomadminpanel.spectate": "Spectate mode: on / off",
+  "key.freedomadminpanel.spectate_next": "Spectate: next player",
+  "key.freedomadminpanel.spectate_prev": "Spectate: previous player",
+  "key.freedomadminpanel.spectate_mouse": "Spectate: free mouse (hold)"
+}
